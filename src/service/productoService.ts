@@ -1,46 +1,40 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
+import { producto } from '../models/producto';
+import { PersistenciaService } from './persistenciaService';
 
-// Ruta absoluta hacia tu carpeta 'src/data'
-const CARPETA_DATOS = path.join(__dirname, '..', 'data');
+const ARCHIVO = 'productos.json';
 
-export class PersistenciaService {
+export class ProductoService {
     
-    // Guardar datos en el archivo JSON (Escritura asíncrona)
-    static async guardarEnArchivo<T>(nombreArchivo: string, datos: T[]): Promise<boolean> {
-        try {
-            // Si la carpeta 'data' no existe, la crea automáticamente
-            await fs.mkdir(CARPETA_DATOS, { recursive: true });
-            
-            const rutaArchivo = path.join(CARPETA_DATOS, nombreArchivo);
-            const textoJSON = JSON.stringify(datos, null, 2); // JSON formateado bonito
-            
-            await fs.writeFile(rutaArchivo, textoJSON, 'utf-8');
-            return true;
-        } catch (error: any) {
-            console.error(`Error al escribir en ${nombreArchivo}:`, error.message);
-            return false;
+    // validamos que no manden campos vacios o precios negativos
+    private static validar(producto: producto): void {
+        if (!producto.id || !producto.nombre) {
+            throw new Error('El ID y el Nombre no pueden estar vacios.');
+        }
+        if (producto.precio <= 0 || producto.stock < 0) {
+            throw new Error('El precio debe ser mayor a 0 y las existencias no pueden ser negativas.');
         }
     }
 
-    // Leer datos del archivo JSON (Lectura y Reconstrucción)
-    static async leerDesdeArchivo<T>(nombreArchivo: string): Promise<T[]> {
-        const rutaArchivo = path.join(CARPETA_DATOS, nombreArchivo);
+    static async agregarProducto(nuevoProducto: producto): Promise<void> {
         try {
-            const contenido = await fs.readFile(rutaArchivo, 'utf-8');
+            this.validar(nuevoProducto);
             
-            // Validar por si el archivo está completamente vacío
-            if (!contenido.trim()) return [];
+            const productos = await PersistenciaService.leerDesdeArchivo<producto>(ARCHIVO);
             
-            return JSON.parse(contenido) as T[];
-        } catch (error: any) {
-            // Si el archivo no existe (error ENOENT), devolvemos un arreglo vacío
-            if (error.code === 'ENOENT') {
-                console.warn(`El archivo ${nombreArchivo} no existe aún. Se creará al guardar.`);
-                return [];
+            // que no se repita el mismo ID
+            if (productos.some(p => p.id === nuevoProducto.id)) {
+                throw new Error('Ese ID de producto ya existe.');
             }
-            console.error(`Error crítico al leer ${nombreArchivo}:`, error.message);
-            return [];
+
+            productos.push(nuevoProducto);
+            await PersistenciaService.guardarEnArchivo(ARCHIVO, productos);
+            console.log('Producto guardado con exito.');
+        } catch (error: any) {
+            console.error('No se pudo guardar el producto: ', error.message);
         }
+    }
+
+    static async obtenerProductos(): Promise<producto[]> {
+        return await PersistenciaService.leerDesdeArchivo<producto>(ARCHIVO);
     }
 }
